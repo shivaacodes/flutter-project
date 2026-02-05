@@ -65,19 +65,28 @@ class _LoginScreenState extends State<LoginScreen> {
                     final auth = Provider.of<AuthService>(context, listen: false);
                     final db = DatabaseService();
                     
-                    if (isLogin) {
-                      await auth.signIn(email, password);
-                    } else {
-                      final user = await auth.signUp(email, password);
-                      if (user != null) {
-                        // Create user profile in Firestore
-                        await db.createUser(UserModel(
-                          uid: user.uid,
-                          email: email,
-                          role: selectedRole,
-                          name: name,
-                        ));
+                    try {
+                      if (isLogin) {
+                        final user = await auth.signIn(email, password);
+                        if (user == null) {
+                           if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Login failed. Check email/password.")));
+                        }
+                      } else {
+                        final user = await auth.signUp(email, password);
+                        if (user != null) {
+                          // Create user profile in Firestore
+                          await db.createUser(UserModel(
+                            uid: user.uid,
+                            email: email,
+                            role: selectedRole,
+                            name: name,
+                          ));
+                        } else {
+                           if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Registration failed. Email might be in use.")));
+                        }
                       }
+                    } catch (e) {
+                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
                     }
                   }
                 },

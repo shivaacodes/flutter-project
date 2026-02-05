@@ -8,6 +8,8 @@ import '../../core/services/storage_service.dart';
 import '../../providers/user_provider.dart';
 import '../../models/workout_model.dart';
 import '../../models/plan_model.dart';
+import '../../models/class_model.dart';
+import '../common/settings_screen.dart';
 
 class MemberDashboard extends StatefulWidget {
   const MemberDashboard({super.key});
@@ -54,7 +56,7 @@ class _MemberDashboardState extends State<MemberDashboard> {
   }
 
   Widget _buildHomeTab(BuildContext context, String uid, String? planId) {
-    return Padding(
+    return SingleChildScrollView( // Made scrollable
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,10 +71,95 @@ class _MemberDashboardState extends State<MemberDashboard> {
             ),
           ),
           const SizedBox(height: 20),
-          const Text("Upcoming Sessions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No sessions scheduled."))),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Upcoming Classes", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              TextButton(
+                onPressed: () => _showBookClassCallback(context, uid),
+                child: const Text("Book Class"),
+              ),
+            ],
+          ),
+          StreamBuilder<List<ClassModel>>(
+            stream: DatabaseService().getClasses(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              final classes = snapshot.data!;
+              final myClasses = classes.where((c) => c.registeredUserIds.contains(uid)).toList();
+              
+              if (myClasses.isEmpty) {
+                return const Card(child: Padding(padding: EdgeInsets.all(20), child: Text("No classes booked yet.")));
+              }
+
+              return Column(
+                children: myClasses.map((c) => Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.event),
+                    title: Text(c.name),
+                    subtitle: Text("${c.instructor} • ${c.startTime.toString().split('.')[0]}"), // Simple format
+                    trailing: const Chip(label: Text("Booked", style: TextStyle(color: Colors.green))),
+                  ),
+                )).toList(),
+              );
+            },
+          ),
         ],
       ),
+    );
+  }
+
+  void _showBookClassCallback(BuildContext context, String uid) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Available Classes", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Expanded(
+                child: StreamBuilder<List<ClassModel>>(
+                  stream: DatabaseService().getClasses(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    final classes = snapshot.data!;
+                    // Filter out already booked classes or past classes if desired
+                    final available = classes.where((c) => !c.registeredUserIds.contains(uid)).toList();
+                    
+                    if (available.isEmpty) return const Center(child: Text("No available classes to book."));
+
+                    return ListView.builder(
+                      itemCount: available.length,
+                      itemBuilder: (context, index) {
+                        final c = available[index];
+                        return Card(
+                          child: ListTile(
+                            title: Text(c.name),
+                            subtitle: Text("${c.instructor} • ${c.startTime.hour}:${c.startTime.minute.toString().padLeft(2, '0')}"),
+                            trailing: ElevatedButton(
+                              onPressed: () async {
+                                await DatabaseService().bookClass(c.id, uid);
+                                if (context.mounted) {
+                                   Navigator.pop(context);
+                                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Booked ${c.name}!")));
+                                }
+                              },
+                              child: const Text("Book"),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -118,7 +205,11 @@ class _MemberDashboardState extends State<MemberDashboard> {
           Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           Text(email, style: const TextStyle(color: Colors.grey)),
           const SizedBox(height: 30),
-          const ListTile(leading: Icon(Icons.settings), title: Text("Settings")),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text("Settings"),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          ),
           const ListTile(leading: Icon(Icons.help), title: Text("Help & Support")),
         ],
       ),

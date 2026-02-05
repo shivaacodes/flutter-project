@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/user_model.dart';
 import '../../models/plan_model.dart';
 import '../../models/workout_model.dart';
+import '../../models/class_model.dart';
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -11,6 +12,7 @@ class DatabaseService {
   CollectionReference get _users => _db.collection('users');
   CollectionReference get _plans => _db.collection('plans');
   CollectionReference get _workouts => _db.collection('workouts');
+  CollectionReference get _classes => _db.collection('classes');
 
   // --- User Operations ---
   Future<void> createUser(UserModel user) async {
@@ -76,5 +78,44 @@ class DatabaseService {
         return WorkoutModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
       }).toList();
     });
+  }
+
+  // --- Class Operations ---
+  Stream<List<ClassModel>> getClasses() {
+    return _classes.orderBy('startTime').snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return ClassModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+      }).toList();
+    });
+  }
+
+  Future<void> bookClass(String classId, String userId) async {
+    final classDoc = _classes.doc(classId);
+    final snapshot = await classDoc.get();
+    
+    if (!snapshot.exists) return;
+
+    final data = snapshot.data() as Map<String, dynamic>;
+    final List<dynamic> currentAttendees = data['registeredUserIds'] ?? [];
+    
+    if (!currentAttendees.contains(userId)) {
+      await classDoc.update({
+        'registeredUserIds': FieldValue.arrayUnion([userId])
+      });
+    }
+  }
+
+  // Helper to create dummy classes for testing
+  Future<void> seedClasses() async {
+    final now = DateTime.now();
+    final classes = [
+      ClassModel(id: '', name: 'Morning Yoga', instructor: 'Sarah', startTime: now.add(const Duration(hours: 2)), durationMinutes: 60, capacity: 20, registeredUserIds: []),
+      ClassModel(id: '', name: 'HIIT Blast', instructor: 'Mike', startTime: now.add(const Duration(hours: 5)), durationMinutes: 45, capacity: 15, registeredUserIds: []),
+      ClassModel(id: '', name: 'Evening Pilates', instructor: 'Sarah', startTime: now.add(const Duration(days: 1, hours: 10)), durationMinutes: 60, capacity: 15, registeredUserIds: []),
+    ];
+
+    for (var c in classes) {
+      await _classes.add(c.toMap());
+    }
   }
 }
